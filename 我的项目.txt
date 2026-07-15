@@ -1,0 +1,492 @@
+/**
+ * 景区路径规划系统 - 完整版（邻接矩阵 + Dijkstra + DFS）
+ *
+ * 功能：
+ * 1. 创建景区景点分布图
+ * 2. 展示景区景点分布图（邻接矩阵）
+ * 3. 输出导游线路图（DFS深度优先遍历）
+ * 4. 判断导游路线中是否存在回路
+ * 5. 查询两个景点间的最短路径和最短距离（Dijkstra算法）
+ * 0. 退出系统
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#define MAX_VERTEX 20   // 最多支持20个景点
+#define MAX_NAME   32   // 景点名称最长31个字符
+#define INF        32767 // 无穷大，表示两景点间没有直连路径
+
+// ========== 图结构体 ==========
+typedef struct {
+    char name[MAX_VERTEX][MAX_NAME];       // 景点名称数组
+    int  matrix[MAX_VERTEX][MAX_VERTEX];   // 邻接矩阵
+    int  vertexNum;                        // 当前景点数量
+    int  edgeNum;                          // 当前边的数量
+} Graph;
+
+// ========== 回路检测结构体 ==========
+typedef struct {
+    int cycle[MAX_VERTEX + 1];  // 回路路径（存顶点下标）
+    int cycleLen;               // 回路上的顶点个数
+    int found;                  // 是否找到回路：1=找到 0=未找到
+} CycleResult;
+
+// ========== 函数声明 ==========
+void initGraph(Graph *g);
+int  findVertex(Graph *g, const char *name);
+void createGraph(Graph *g);
+void displayMatrix(Graph *g);
+void dfsTourRoute(Graph *g);
+void findLoop(Graph *g);
+void dijkstra(Graph *g);
+void loadTestData(Graph *g);
+
+// ========== 中文对齐辅助函数 ==========
+int display_width(const char *s) {
+    int w = 0;
+    while (*s) {
+        if ((*s & 0x80) == 0) {
+            w++; s++;
+        } else {
+            w += 2;
+            while ((*++s & 0xC0) == 0x80);
+        }
+    }
+    return w;
+}
+
+void print_col(const char *s, int target_w) {
+    int w = display_width(s);
+    printf("%s", s);
+    for (int i = w; i < target_w; i++) putchar(' ');
+}
+
+void print_col_int(int val, int target_w) {
+    char buf[32];
+    int len = sprintf(buf, "%d", val);
+    printf("%s", buf);
+    for (int i = len; i < target_w; i++) putchar(' ');
+}
+
+// ========== 主函数 ==========
+int main() {
+    Graph graph;
+    int   choice;
+
+    // 设置控制台为 UTF-8 编码
+    system("chcp 65001 > nul");
+#ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+#endif
+
+    initGraph(&graph);
+
+    while (1) {
+        printf("\n");
+        printf("欢迎使用景区路径规划系统\n");
+        printf("=============================\n");
+        printf("1 创建景区景点图\n");
+        printf("2 景区景点分布图\n");
+        printf("3 导游线路图\n");
+        printf("4 判断导游路线中的回路\n");
+        printf("5 查询最短路径和最短距离\n");
+        printf("6 加载测试数据（快速体验）\n");
+        printf("0 退出系统\n");
+        printf("=============================\n");
+        printf("请输入您的选择：");
+        scanf("%d", &choice);
+        getchar();
+
+        switch (choice) {
+        case 1:
+            createGraph(&graph);
+            break;
+        case 2:
+            displayMatrix(&graph);
+            break;
+        case 3:
+            dfsTourRoute(&graph);
+            break;
+        case 4:
+            findLoop(&graph);
+            break;
+        case 5:
+            dijkstra(&graph);
+            break;
+        case 6:
+            loadTestData(&graph);
+            break;
+        case 0:
+            printf("感谢使用，再见！\n");
+            return 0;
+        default:
+            printf("无效选择，请重新输入！\n");
+        }
+    }
+}
+
+// ========== 功能0：初始化图 ==========
+void initGraph(Graph *g) {
+    g->vertexNum = 0;
+    g->edgeNum   = 0;
+    for (int i = 0; i < MAX_VERTEX; i++) {
+        g->name[i][0] = '\0';
+        for (int j = 0; j < MAX_VERTEX; j++) {
+            g->matrix[i][j] = (i == j) ? 0 : INF;
+        }
+    }
+}
+
+// ========== 功能辅助：按名称查找景点下标 ==========
+int findVertex(Graph *g, const char *name) {
+    for (int i = 0; i < g->vertexNum; i++) {
+        if (strcmp(g->name[i], name) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// ========== 功能1：创建景区景点图 ==========
+void createGraph(Graph *g) {
+    initGraph(g);
+
+    printf("请输入顶点数和边数：");
+    scanf("%d %d", &g->vertexNum, &g->edgeNum);
+    getchar();
+
+    // 输入校验：景点数必须在合法范围内
+    while (g->vertexNum > MAX_VERTEX || g->vertexNum < 0) {
+        printf("顶点数必须在 0 到 %d 之间，请重新输入：", MAX_VERTEX);
+        scanf("%d", &g->vertexNum);
+        getchar();
+    }
+
+    // 输入校验：边数不能超过 n*(n-1)/2（完全图的边数）
+    while (g->edgeNum < 0 || g->edgeNum > g->vertexNum * (g->vertexNum - 1) / 2) {
+        printf("边数必须在 0 到 %d 之间，请重新输入：", g->vertexNum * (g->vertexNum - 1) / 2);
+        scanf("%d", &g->edgeNum);
+        getchar();
+    }
+
+    // 输入每个景点的名称
+    printf("请输入各顶点的名字：\n");
+    for (int i = 0; i < g->vertexNum; i++) {
+        printf("第%d个景点：", i + 1);
+        fgets(g->name[i], MAX_NAME, stdin);
+        size_t len = strlen(g->name[i]);
+        if (len > 0 && g->name[i][len - 1] == '\n') {
+            g->name[i][len - 1] = '\0';
+        }
+    }
+
+    // 输入每条边：两个景点名 + 距离
+    for (int i = 0; i < g->edgeNum; i++) {
+        char name1[MAX_NAME], name2[MAX_NAME];
+        int  weight;
+
+        printf("输入第%d条边的两个顶点以及该边的权值：", i + 1);
+        scanf("%s %s %d", name1, name2, &weight);
+
+        int v1 = findVertex(g, name1);
+        int v2 = findVertex(g, name2);
+
+        if (v1 == -1 || v2 == -1) {
+            printf("错误：景点名称不存在，请重新输入该边！\n");
+            i--;
+            continue;
+        }
+
+        // 无向图：双向写入
+        g->matrix[v1][v2] = weight;
+        g->matrix[v2][v1] = weight;
+    }
+
+    printf("景区景点图创建成功！\n");
+}
+
+// ========== 功能2：展示景区景点分布图（邻接矩阵）==========
+void displayMatrix(Graph *g) {
+    int col_w = 10;
+
+    if (g->vertexNum == 0) {
+        printf("请先创建景区景点图！\n");
+        return;
+    }
+
+    printf("\n景区景点分布图（邻接矩阵）：\n");
+
+    // 打印列标题
+    print_col("", col_w);
+    for (int i = 0; i < g->vertexNum; i++) {
+        print_col(g->name[i], col_w);
+    }
+    printf("\n");
+
+    // 打印每一行
+    for (int i = 0; i < g->vertexNum; i++) {
+        print_col(g->name[i], col_w);
+        for (int j = 0; j < g->vertexNum; j++) {
+            if (g->matrix[i][j] == INF) {
+                print_col("32767", col_w);
+            } else {
+                print_col_int(g->matrix[i][j], col_w);
+            }
+        }
+        printf("\n");
+    }
+}
+
+// ========== 功能3：DFS导游线路（递归辅助函数）==========
+void dfsRouteHelper(Graph *g, int current, int visited[]) {
+    visited[current] = 1;
+    printf("%s", g->name[current]);
+
+    for (int i = 0; i < g->vertexNum; i++) {
+        if (g->matrix[current][i] != INF && !visited[i]) {
+            printf("-");
+            dfsRouteHelper(g, i, visited);
+            printf("-%s", g->name[current]);
+        }
+    }
+}
+
+// ========== 功能3：输出导游线路图 ==========
+void dfsTourRoute(Graph *g) {
+    if (g->vertexNum == 0) {
+        printf("请先创建景区景点图！\n");
+        return;
+    }
+
+    char startName[MAX_NAME];
+    printf("请输入起始景点名称：");
+    scanf("%s", startName);
+    getchar();
+
+    int start = findVertex(g, startName);
+    if (start == -1) {
+        printf("景点 %s 不存在！\n", startName);
+        return;
+    }
+
+    int visited[MAX_VERTEX] = {0};
+
+    printf("\n导游路线为：\n");
+    dfsRouteHelper(g, start, visited);
+    printf("\n");
+}
+
+// ========== 功能4：回路检测（递归辅助函数）==========
+void dfsFindCycle(Graph *g, int current, int parent,
+                  int visited[], int path[], int pathLen,
+                  CycleResult *result) {
+    if (result->found) return;
+
+    visited[current] = 1;
+    path[pathLen] = current;
+
+    for (int i = 0; i < g->vertexNum; i++) {
+        if (g->matrix[current][i] == INF) continue;
+
+        if (!visited[i]) {
+            dfsFindCycle(g, i, current, visited, path, pathLen + 1, result);
+        } else if (i != parent && !result->found) {
+            int startIdx = -1;
+            for (int j = 0; j < pathLen; j++) {
+                if (path[j] == i) {
+                    startIdx = j;
+                    break;
+                }
+            }
+            if (startIdx != -1) {
+                result->found = 1;
+                int idx = 0;
+                for (int j = startIdx; j <= pathLen; j++) {
+                    result->cycle[idx++] = path[j];
+                }
+                result->cycle[idx++] = i;
+                result->cycleLen = idx;
+            }
+        }
+    }
+}
+
+// ========== 功能4：判断导游路线中是否存在回路 ==========
+void findLoop(Graph *g) {
+    if (g->vertexNum == 0) {
+        printf("请先创建景区景点图！\n");
+        return;
+    }
+
+    int visited[MAX_VERTEX] = {0};
+    int path[MAX_VERTEX];
+    CycleResult result = {.found = 0, .cycleLen = 0};
+
+    for (int i = 0; i < g->vertexNum && !result.found; i++) {
+        if (!visited[i]) {
+            dfsFindCycle(g, i, -1, visited, path, 0, &result);
+        }
+    }
+
+    if (result.found) {
+        printf("图中有回路，回路为：");
+        for (int i = 0; i < result.cycleLen; i++) {
+            printf("%s", g->name[result.cycle[i]]);
+            if (i < result.cycleLen - 1) printf("-");
+        }
+        printf("\n");
+    } else {
+        printf("图中没有回路。\n");
+    }
+}
+
+// ========== 功能5：Dijkstra最短路径算法 ==========
+void dijkstra(Graph *g) {
+    if (g->vertexNum == 0) {
+        printf("请先创建景区景点图！\n");
+        return;
+    }
+
+    char startName[MAX_NAME], endName[MAX_NAME];
+    printf("请输入起始景点名称：");
+    scanf("%s", startName);
+    getchar();
+
+    int start = findVertex(g, startName);
+    if (start == -1) {
+        printf("景点 %s 不存在！\n", startName);
+        return;
+    }
+
+    printf("请输入目标景点名称：");
+    scanf("%s", endName);
+    getchar();
+
+    int end = findVertex(g, endName);
+    if (end == -1) {
+        printf("景点 %s 不存在！\n", endName);
+        return;
+    }
+
+    // Dijkstra算法实现
+    int dist[MAX_VERTEX];      // 距离数组：dist[i]表示从start到i的最短距离
+    int prev[MAX_VERTEX];      // 前驱数组：prev[i]表示最短路径上i的前一个顶点
+    int visited[MAX_VERTEX] = {0}; // 标记数组
+
+    // 初始化
+    for (int i = 0; i < g->vertexNum; i++) {
+        dist[i] = g->matrix[start][i]; // 初始距离为邻接矩阵中的值
+        prev[i] = (dist[i] != INF && i != start) ? start : -1; // 前驱初始化
+    }
+
+    visited[start] = 1; // 起始点标记为已访问
+    dist[start] = 0;    // 起始点到自身距离为0
+
+    // 主循环：每次找到一个未访问的最近顶点
+    for (int i = 1; i < g->vertexNum; i++) {
+        int minDist = INF;
+        int u = -1;
+
+        // 找到未访问顶点中距离最小的
+        for (int j = 0; j < g->vertexNum; j++) {
+            if (!visited[j] && dist[j] < minDist) {
+                minDist = dist[j];
+                u = j;
+            }
+        }
+
+        if (u == -1) break; // 所有可达顶点都已访问
+
+        visited[u] = 1; // 标记为已访问
+
+        // 更新u的邻居的距离
+        for (int v = 0; v < g->vertexNum; v++) {
+            if (!visited[v] && g->matrix[u][v] != INF) {
+                int newDist = dist[u] + g->matrix[u][v];
+                if (newDist < dist[v]) {
+                    dist[v] = newDist;
+                    prev[v] = u;
+                }
+            }
+        }
+    }
+
+    // 输出结果
+    if (dist[end] == INF) {
+        printf("从 %s 到 %s 没有可达路径！\n", startName, endName);
+    } else {
+        printf("\n从 %s 到 %s 的最短距离为：%d\n", startName, endName, dist[end]);
+        printf("最短路径为：");
+
+        // 回溯路径
+        int path[MAX_VERTEX];
+        int pathLen = 0;
+        int current = end;
+
+        while (current != -1) {
+            path[pathLen++] = current;
+            current = prev[current];
+        }
+
+        // 逆序打印路径
+        for (int i = pathLen - 1; i >= 0; i--) {
+            printf("%s", g->name[path[i]]);
+            if (i > 0) printf(" -> ");
+        }
+        printf("\n");
+    }
+}
+
+// ========== 功能6：加载测试数据 ==========
+void loadTestData(Graph *g) {
+    initGraph(g);
+
+    // 设置景点数量和边数
+    g->vertexNum = 8;
+    g->edgeNum = 9;
+
+    // 设置景点名称
+    strcpy(g->name[0], "大门");
+    strcpy(g->name[1], "碧玉潭");
+    strcpy(g->name[2], "红叶林");
+    strcpy(g->name[3], "赏花园");
+    strcpy(g->name[4], "飞云石");
+    strcpy(g->name[5], "九曲桥");
+    strcpy(g->name[6], "白虎岩");
+    strcpy(g->name[7], "观月阁");
+
+    // 设置边（无向图，双向写入）
+    // 大门 - 碧玉潭 : 9
+    g->matrix[0][1] = 9;  g->matrix[1][0] = 9;
+    // 大门 - 红叶林 : 8
+    g->matrix[0][2] = 8;  g->matrix[2][0] = 8;
+    // 碧玉潭 - 赏花园 : 7
+    g->matrix[1][3] = 7;  g->matrix[3][1] = 7;
+    // 碧玉潭 - 飞云石 : 6
+    g->matrix[1][4] = 6;  g->matrix[4][1] = 6;
+    // 飞云石 - 观月阁 : 3
+    g->matrix[4][7] = 3;  g->matrix[7][4] = 3;
+    // 赏花园 - 观月阁 : 11
+    g->matrix[3][7] = 11; g->matrix[7][3] = 11;
+    // 红叶林 - 九曲桥 : 4
+    g->matrix[2][5] = 4;  g->matrix[5][2] = 4;
+    // 红叶林 - 白虎岩 : 5
+    g->matrix[2][6] = 5;  g->matrix[6][2] = 5;
+    // 九曲桥 - 白虎岩 : 7
+    g->matrix[5][6] = 7;  g->matrix[6][5] = 7;
+
+    printf("测试数据加载成功！\n");
+    printf("景点：大门、碧玉潭、红叶林、赏花园、飞云石、九曲桥、白虎岩、观月阁\n");
+    printf("共 %d 个景点，%d 条路径\n", g->vertexNum, g->edgeNum);
+}
+把上面代码分为下面几部分
+1.创建图结构
+2.判断景区是否存在回路功能
+3.输出导游路线功能

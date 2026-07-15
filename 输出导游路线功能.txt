@@ -1,0 +1,116 @@
+/**
+ * 第三部分：输出导游路线功能
+ * 包括：DFS深度优先遍历、展示邻接矩阵、显示导游线路
+ */
+
+#define MAX_VERTEX 20
+#define MAX_NAME 32
+#define INF 32767
+
+// 假设Graph结构体已定义（同第一部分）
+
+// ========== 函数声明 ==========
+void displayMatrix(Graph *g);
+void dfsRouteHelper(Graph *g, int current, int visited[]);
+void dfsTourRoute(Graph *g);
+int display_width(const char *s);
+void print_col(const char *s, int target_w);
+void print_col_int(int val, int target_w);
+
+// ========== 中文对齐辅助函数 ==========
+int display_width(const char *s) {
+    int w = 0;
+    while (*s) {
+        if ((*s & 0x80) == 0) {
+            w++; s++;
+        } else {
+            w += 2;
+            while ((*++s & 0xC0) == 0x80);
+        }
+    }
+    return w;
+}
+
+void print_col(const char *s, int target_w) {
+    int w = display_width(s);
+    printf("%s", s);
+    for (int i = w; i < target_w; i++) putchar(' ');
+}
+
+void print_col_int(int val, int target_w) {
+    char buf[32];
+    int len = sprintf(buf, "%d", val);
+    printf("%s", buf);
+    for (int i = len; i < target_w; i++) putchar(' ');
+}
+
+// ========== 展示景区景点分布图（邻接矩阵）==========
+void displayMatrix(Graph *g) {
+    int col_w = 10;
+
+    if (g->vertexNum == 0) {
+        printf("请先创建景区景点图！\n");
+        return;
+    }
+
+    printf("\n景区景点分布图（邻接矩阵）：\n");
+
+    // 打印列标题
+    print_col("", col_w);
+    for (int i = 0; i < g->vertexNum; i++) {
+        print_col(g->name[i], col_w);
+    }
+    printf("\n");
+
+    // 打印每一行
+    for (int i = 0; i < g->vertexNum; i++) {
+        print_col(g->name[i], col_w);
+        for (int j = 0; j < g->vertexNum; j++) {
+            if (g->matrix[i][j] == INF) {
+                print_col("32767", col_w);
+            } else {
+                print_col_int(g->matrix[i][j], col_w);
+            }
+        }
+        printf("\n");
+    }
+}
+
+// ========== DFS导游线路（递归辅助函数）==========
+void dfsRouteHelper(Graph *g, int current, int visited[]) {
+    visited[current] = 1;
+    printf("%s", g->name[current]);
+
+    for (int i = 0; i < g->vertexNum; i++) {
+        if (g->matrix[current][i] != INF && !visited[i]) {
+            printf("-");
+            dfsRouteHelper(g, i, visited);
+            printf("-%s", g->name[current]);
+        }
+    }
+}
+
+// ========== 输出导游线路图 ==========
+void dfsTourRoute(Graph *g) {
+    if (g->vertexNum == 0) {
+        printf("请先创建景区景点图！\n");
+        return;
+    }
+
+    char startName[MAX_NAME];
+    printf("请输入起始景点名称：");
+    scanf("%s", startName);
+    getchar();
+
+    int start = findVertex(g, startName);
+    if (start == -1) {
+        printf("景点 %s 不存在！\n", startName);
+        return;
+    }
+
+    int visited[MAX_VERTEX] = {0};
+
+    printf("\n导游路线为：\n");
+    dfsRouteHelper(g, start, visited);
+    printf("\n");
+}

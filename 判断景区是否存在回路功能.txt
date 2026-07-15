@@ -1,0 +1,89 @@
+/**
+ * 第二部分：判断景区是否存在回路功能
+ * 包括：回路检测结构体、DFS回路检测、判断并输出结果
+ */
+
+#define MAX_VERTEX 20
+#define INF 32767
+
+// 假设Graph结构体已定义（同第一部分）
+
+// ========== 回路检测结构体 ==========
+typedef struct {
+    int cycle[MAX_VERTEX + 1];  // 回路路径（存顶点下标）
+    int cycleLen;               // 回路上的顶点个数
+    int found;                  // 是否找到回路：1=找到 0=未找到
+} CycleResult;
+
+// ========== 函数声明 ==========
+void dfsFindCycle(Graph *g, int current, int parent,
+                  int visited[], int path[], int pathLen,
+                  CycleResult *result);
+void findLoop(Graph *g);
+
+// ========== 回路检测（递归辅助函数）==========
+void dfsFindCycle(Graph *g, int current, int parent,
+                  int visited[], int path[], int pathLen,
+                  CycleResult *result) {
+    if (result->found) return;
+
+    visited[current] = 1;
+    path[pathLen] = current;
+
+    for (int i = 0; i < g->vertexNum; i++) {
+        if (g->matrix[current][i] == INF) continue;
+
+        if (!visited[i]) {
+            dfsFindCycle(g, i, current, visited, path, pathLen + 1, result);
+        } else if (i != parent && !result->found) {
+            // 找到回路：从路径中提取环
+            int startIdx = -1;
+            for (int j = 0; j < pathLen; j++) {
+                if (path[j] == i) {
+                    startIdx = j;
+                    break;
+                }
+            }
+            if (startIdx != -1) {
+                result->found = 1;
+                int idx = 0;
+                for (int j = startIdx; j <= pathLen; j++) {
+                    result->cycle[idx++] = path[j];
+                }
+                result->cycle[idx++] = i;
+                result->cycleLen = idx;
+            }
+        }
+    }
+}
+
+// ========== 判断导游路线中是否存在回路 ==========
+void findLoop(Graph *g) {
+    if (g->vertexNum == 0) {
+        printf("请先创建景区景点图！\n");
+        return;
+    }
+
+    int visited[MAX_VERTEX] = {0};
+    int path[MAX_VERTEX];
+    CycleResult result = {.found = 0, .cycleLen = 0};
+
+    // 遍历所有顶点，检测回路
+    for (int i = 0; i < g->vertexNum && !result.found; i++) {
+        if (!visited[i]) {
+            dfsFindCycle(g, i, -1, visited, path, 0, &result);
+        }
+    }
+
+    // 输出结果
+    if (result.found) {
+        printf("图中有回路，回路为：");
+        for (int i = 0; i < result.cycleLen; i++) {
+            printf("%s", g->name[result.cycle[i]]);
+            if (i < result.cycleLen - 1) printf("-");
+        }
+        printf("\n");
+    } else {
+        printf("图中没有回路。\n");
+    }
+}

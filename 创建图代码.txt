@@ -1,0 +1,153 @@
+/**
+ * 第一部分：创建图结构
+ * 包括：结构体定义、图初始化、景点查找、创建图、加载测试数据
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#define MAX_VERTEX 20   // 最多支持20个景点
+#define MAX_NAME   32   // 景点名称最长31个字符
+#define INF        32767 // 无穷大，表示两景点间没有直连路径
+
+// ========== 图结构体 ==========
+typedef struct {
+    char name[MAX_VERTEX][MAX_NAME];       // 景点名称数组
+    int  matrix[MAX_VERTEX][MAX_VERTEX];   // 邻接矩阵
+    int  vertexNum;                        // 当前景点数量
+    int  edgeNum;                          // 当前边的数量
+} Graph;
+
+// ========== 函数声明 ==========
+void initGraph(Graph *g);
+int  findVertex(Graph *g, const char *name);
+void createGraph(Graph *g);
+void loadTestData(Graph *g);
+
+// ========== 初始化图 ==========
+void initGraph(Graph *g) {
+    g->vertexNum = 0;
+    g->edgeNum   = 0;
+    for (int i = 0; i < MAX_VERTEX; i++) {
+        g->name[i][0] = '\0';
+        for (int j = 0; j < MAX_VERTEX; j++) {
+            g->matrix[i][j] = (i == j) ? 0 : INF;
+        }
+    }
+}
+
+// ========== 按名称查找景点下标 ==========
+int findVertex(Graph *g, const char *name) {
+    for (int i = 0; i < g->vertexNum; i++) {
+        if (strcmp(g->name[i], name) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// ========== 创建景区景点图 ==========
+void createGraph(Graph *g) {
+    initGraph(g);
+
+    printf("请输入顶点数和边数：");
+    scanf("%d %d", &g->vertexNum, &g->edgeNum);
+    getchar();
+
+    // 输入校验：景点数必须在合法范围内
+    while (g->vertexNum > MAX_VERTEX || g->vertexNum < 0) {
+        printf("顶点数必须在 0 到 %d 之间，请重新输入：", MAX_VERTEX);
+        scanf("%d", &g->vertexNum);
+        getchar();
+    }
+
+    // 输入校验：边数不能超过 n*(n-1)/2（完全图的边数）
+    while (g->edgeNum < 0 || g->edgeNum > g->vertexNum * (g->vertexNum - 1) / 2) {
+        printf("边数必须在 0 到 %d 之间，请重新输入：", g->vertexNum * (g->vertexNum - 1) / 2);
+        scanf("%d", &g->edgeNum);
+        getchar();
+    }
+
+    // 输入每个景点的名称
+    printf("请输入各顶点的名字：\n");
+    for (int i = 0; i < g->vertexNum; i++) {
+        printf("第%d个景点：", i + 1);
+        fgets(g->name[i], MAX_NAME, stdin);
+        size_t len = strlen(g->name[i]);
+        if (len > 0 && g->name[i][len - 1] == '\n') {
+            g->name[i][len - 1] = '\0';
+        }
+    }
+
+    // 输入每条边：两个景点名 + 距离
+    for (int i = 0; i < g->edgeNum; i++) {
+        char name1[MAX_NAME], name2[MAX_NAME];
+        int  weight;
+
+        printf("输入第%d条边的两个顶点以及该边的权值：", i + 1);
+        scanf("%s %s %d", name1, name2, &weight);
+
+        int v1 = findVertex(g, name1);
+        int v2 = findVertex(g, name2);
+
+        if (v1 == -1 || v2 == -1) {
+            printf("错误：景点名称不存在，请重新输入该边！\n");
+            i--;
+            continue;
+        }
+
+        // 无向图：双向写入
+        g->matrix[v1][v2] = weight;
+        g->matrix[v2][v1] = weight;
+    }
+
+    printf("景区景点图创建成功！\n");
+}
+
+// ========== 加载测试数据 ==========
+void loadTestData(Graph *g) {
+    initGraph(g);
+
+    // 设置景点数量和边数
+    g->vertexNum = 8;
+    g->edgeNum = 9;
+
+    // 设置景点名称
+    strcpy(g->name[0], "大门");
+    strcpy(g->name[1], "碧玉潭");
+    strcpy(g->name[2], "红叶林");
+    strcpy(g->name[3], "赏花园");
+    strcpy(g->name[4], "飞云石");
+    strcpy(g->name[5], "九曲桥");
+    strcpy(g->name[6], "白虎岩");
+    strcpy(g->name[7], "观月阁");
+
+    // 设置边（无向图，双向写入）
+    // 大门 - 碧玉潭 : 9
+    g->matrix[0][1] = 9;  g->matrix[1][0] = 9;
+    // 大门 - 红叶林 : 8
+    g->matrix[0][2] = 8;  g->matrix[2][0] = 8;
+    // 碧玉潭 - 赏花园 : 7
+    g->matrix[1][3] = 7;  g->matrix[3][1] = 7;
+    // 碧玉潭 - 飞云石 : 6
+    g->matrix[1][4] = 6;  g->matrix[4][1] = 6;
+    // 飞云石 - 观月阁 : 3
+    g->matrix[4][7] = 3;  g->matrix[7][4] = 3;
+    // 赏花园 - 观月阁 : 11
+    g->matrix[3][7] = 11; g->matrix[7][3] = 11;
+    // 红叶林 - 九曲桥 : 4
+    g->matrix[2][5] = 4;  g->matrix[5][2] = 4;
+    // 红叶林 - 白虎岩 : 5
+    g->matrix[2][6] = 5;  g->matrix[6][2] = 5;
+    // 九曲桥 - 白虎岩 : 7
+    g->matrix[5][6] = 7;  g->matrix[6][5] = 7;
+
+    printf("测试数据加载成功！\n");
+    printf("景点：大门、碧玉潭、红叶林、赏花园、飞云石、九曲桥、白虎岩、观月阁\n");
+    printf("共 %d 个景点，%d 条路径\n", g->vertexNum, g->edgeNum);
+}
